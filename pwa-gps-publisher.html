@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#020617" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tony GPS">
+  
+  <title>Tony — Smart GPS Tracker (PWA)</title>
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    :root{ --bg:#020617; --card-bg:rgba(11,18,32,0.85); --card-border:rgba(148,163,184,0.35); --accent:#2563eb; --text:#f3f4f6; --muted:#94a3b8; --good:#22c55e; --warn:#fbbf24; --bad:#ef4444; }
+    html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; }
+    .wrap{ max-width:600px; margin:20px auto; padding:0 12px; display:grid; gap:15px; }
+    
+    .card{ background:var(--card-bg); border:1px solid var(--card-border); border-radius:18px; overflow:hidden; backdrop-filter:blur(10px); }
+    .header{ padding:15px; background:linear-gradient(180deg, rgba(37,99,235,.15), rgba(37,99,235,.05)); border-bottom:1px solid var(--card-border); display:flex; justify-content:space-between; align-items:center; }
+    .title{ font-weight:900; letter-spacing:.5px; }
+    .pill{ font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; background:#0f172a; border:1px solid var(--card-border); color:var(--muted); text-transform:uppercase; transition:all 0.2s; }
+    
+    .body{ padding:15px; display:grid; gap:15px; }
+    
+    label{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; display:block; margin-bottom:6px; }
+    select, input{ width:100%; padding:12px; border-radius:10px; background:#0f172a; border:1px solid var(--card-border); color:white; box-sizing:border-box; outline:none; }
+    
+    .btn-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    button{ padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); font-weight:800; cursor:pointer; background:#1e293b; color:white; transition:0.2s; }
+    button.primary{ background:linear-gradient(180deg, #2563eb, #1d4ed8); }
+    button:disabled{ opacity:0.5; cursor:not-allowed; }
+    
+    .hud-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; font-family:monospace; font-size:12px; color:var(--muted); }
+    .hud-item{ background:#0f172a; padding:8px; border-radius:8px; border:1px solid var(--card-border); }
+    .hud-val{ color:var(--text); font-weight:bold; display:block; font-size:14px; }
+
+    .tabs{ display:flex; border-bottom:1px solid var(--card-border); }
+    .tab{ flex:1; text-align:center; padding:12px; cursor:pointer; font-weight:bold; font-size:12px; color:var(--muted); background:rgba(0,0,0,0.2); }
+    .tab.active{ background:transparent; color:var(--accent); border-bottom:2px solid var(--accent); }
+
+    .pwa-banner{ 
+      background:linear-gradient(90deg, #7c3aed, #6366f1); 
+      color:white; 
+      padding:12px; 
+      border-radius:12px; 
+      font-size:11px; 
+      font-weight:800; 
+      text-align:center; 
+      margin-bottom:10px;
+      display:none;
+    }
+    .pwa-banner.show{ display:block; }
+    .pwa-banner button{
+      margin-top:8px;
+      padding:8px 16px;
+      background:white;
+      color:#7c3aed;
+      border:none;
+      border-radius:8px;
+      font-weight:800;
+      font-size:11px;
+    }
+
+    .bg-indicator{ 
+      display:none; 
+      background:linear-gradient(90deg, #22c55e, #16a34a); 
+      color:white; 
+      padding:8px 12px; 
+      border-radius:8px; 
+      font-size:11px; 
+      font-weight:800; 
+      text-align:center; 
+      margin-bottom:10px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .bg-indicator.active{ display:block; }
+
+    .sw-status{
+      font-size:10px;
+      color:var(--muted);
+      text-align:center;
+      padding:5px;
+      border-radius:8px;
+      background:#0f172a;
+      margin-bottom:10px;
+    }
+    .sw-status.active{ color:#22c55e; }
+  </style>
+</head>
+<body>
+
+  <div class="wrap">
+    
+    <!-- PWA Install Banner -->
+    <div class="pwa-banner" id="pwaBanner">
+      📱 Install this app for true background tracking!
+      <button id="installBtn">INSTALL APP</button>
+    </div>
+
+    <!-- Service Worker Status -->
+    <div class="sw-status" id="swStatus">
+      Service Worker: Checking...
+    </div>
+
+    <!-- Background Tracking Indicator -->
+    <div class="bg-indicator" id="bgIndicator">
+      🔋 BACKGROUND TRACKING ACTIVE
+    </div>
+
+    <div class="card">
+      <div class="header">
+        <div class="title">GPS PUBLISHER</div>
+        <div class="pill" id="status">IDLE</div>
+      </div>
+      <div class="body">
+        
+        <div>
+          <label>Tracking Mode</label>
+          <select id="modeSel">
+            <option value="smart" selected>⚡️ Smart Cornering (Recommended)</option>
+            <option value="dist">📏 Distance (Fixed)</option>
+            <option value="time">⏱️ Time (Fixed)</option>
+          </select>
+          <div class="hud-grid" style="margin-top:5px; font-size:10px; color:#64748b;">
+            <div id="smartDesc">Auto-detects curves. Saves every 15° turn OR 15 miles straight.</div>
+          </div>
+        </div>
+
+        <div id="manualSettings" style="display:none; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>
+            <label>Interval</label>
+            <select id="intervalSel">
+              <option value="0.5">0.5 mi</option>
+              <option value="1">1.0 mi</option>
+              <option value="5">5.0 mi</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="hud-grid">
+          <div class="hud-item">Points <span class="hud-val" id="hudPts">0</span></div>
+          <div class="hud-item">Speed <span class="hud-val" id="hudSpd">0 mph</span></div>
+          <div class="hud-item">Heading <span class="hud-val" id="hudHead">---</span></div>
+          <div class="hud-item">Trip <span class="hud-val" id="hudTrip">---</span></div>
+        </div>
+
+        <div style="font-size:10px; color:var(--muted); text-align:center; padding:5px;" id="wakeLockStatus">
+          Wake Lock: Not Active
+        </div>
+
+        <div class="btn-row">
+          <button id="btnStart" class="primary">START TRIP</button>
+          <button id="btnStop" disabled>STOP</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="header">
+        <div class="title">ADD WAYPOINT</div>
+        <div class="pill" id="wpStatus">READY</div>
+      </div>
+      
+      <div class="tabs">
+        <div class="tab active" id="tabBtn_search" onclick="setTab('search')">Google Search</div>
+        <div class="tab" id="tabBtn_coord" onclick="setTab('coord')">Coords</div>
+        <div class="tab" id="tabBtn_here" onclick="setTab('here')">Current Loc</div>
+      </div>
+
+      <div class="body">
+        
+        <div id="tab-search">
+          <label>Search Place or Address</label>
+          <div style="display:flex; gap:8px;">
+            <input id="inpSearch" placeholder="e.g. Petro Peotone, IL">
+            <button onclick="doGeocode()" style="padding:10px; width:auto;">🔍</button>
+          </div>
+          <div style="font-size:11px; color:var(--accent); margin-top:5px; font-family:monospace;" id="geoResult"></div>
+        </div>
+
+        <div id="tab-coord" style="display:none;">
+          <div class="btn-row">
+            <input id="inpLat" placeholder="Lat" type="number">
+            <input id="inpLng" placeholder="Lng" type="number">
+          </div>
+        </div>
+
+        <div id="tab-here" style="display:none; text-align:center; padding:10px; color:var(--muted); font-size:12px;">
+          Uses your current GPS fix. Tracking must be ON.
+        </div>
+
+        <div>
+          <label>Category / Color</label>
+          <select id="catSel">
+            <option value="green" selected>🟢 General / Good</option>
+            <option value="purple">📷 Scenic / Photo Op</option>
+            <option value="yellow">⚠️ Caution</option>
+            <option value="pink">🔴 Avoid / Bad</option>
+            <option value="blue">ℹ️ Info</option>
+          </select>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label>Date & Time</label>
+            <input type="datetime-local" id="inpTime">
+          </div>
+          <div>
+            <label>Note (Optional)</label>
+            <input id="inpNote" placeholder="Note...">
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button onclick="saveWaypoint()" class="primary">SAVE POINT</button>
+          <button onclick="undoLast()" style="background:#451a1a; color:#fca5a5;">UNDO</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAfLVMlysAhRtkLH1ZypUJuzHCiJImtF-k&libraries=geometry,places"></script>
+
+  <script>
+    // ====================================
+    // SERVICE WORKER REGISTRATION
+    // ====================================
+    
+    let deferredPrompt;
+    const swStatus = document.getElementById('swStatus');
+    const pwaBanner = document.getElementById('pwaBanner');
+    const installBtn = document.getElementById('installBtn');
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(registration => {
+          console.log('Service Worker registered:', registration);
+          swStatus.textContent = '✓ Service Worker: ACTIVE';
+          swStatus.classList.add('active');
+          
+          // Listen for messages from Service Worker
+          navigator.serviceWorker.addEventListener('message', event => {
+            if (event.data.type === 'GPS_UPDATE') {
+              console.log('GPS update from SW:', event.data);
+              updateUIFromServiceWorker(event.data);
+            }
+          });
+        })
+        .catch(err => {
+          console.error('Service Worker registration failed:', err);
+          swStatus.textContent = '✗ Service Worker: FAILED';
+          swStatus.style.color = '#ef4444';
+        });
+    } else {
+      swStatus.textContent = '✗ Service Worker: Not Supported';
+      swStatus.style.color = '#ef4444';
+    }
+
+    // PWA Install Prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      pwaBanner.classList.add('show');
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User ${outcome} the install prompt`);
+      deferredPrompt = null;
+      pwaBanner.classList.remove('show');
+    });
+
+    // Detect if already installed
+    window.addEventListener('appinstalled', () => {
+      console.log('PWA installed!');
+      pwaBanner.classList.remove('show');
+    });
+
+    // ====================================
+    // FIREBASE CONFIG
+    // ====================================
+    
+    const CORNER_ANGLE_THRESHOLD = 12;
+    const STRAIGHT_DIST_THRESHOLD = 15.0; 
+    const MIN_MOVE_DIST = 0.05;
+
+    firebase.initializeApp({
+      apiKey: "AIzaSyBJaTKBMZm26Cc0OoI1jqImq2L_4SeugbU",
+      authDomain: "trail-map-30113.firebaseapp.com",
+      databaseURL: "https://trail-map-30113-default-rtdb.firebaseio.com",
+      projectId: "trail-map-30113",
+      storageBucket: "trail-map-30113.appspot.com",
+      messagingSenderId: "573419392500",
+      appId: "1:573419392500:web:c2c0cb3c3cb40742537da1"
+    });
+    const db = firebase.database();
+    const sessionId = "TONYLIVE";
+    const tripsRef = db.ref(`sessions/${sessionId}/trips`);
+    const globalRef = db.ref(`sessions/${sessionId}/points`);
+    const stateRef = db.ref(`sessions/${sessionId}/state`);
+
+    // STATE
+    let tracking = false;
+    let watchId = null;
+    let activeTripId = null;
+    let pointCount = 0;
+    
+    let lastFix = null;
+    let lastSavedFix = null;
+    let lastFoundAddr = "";
+    let wakeLock = null;
+
+    // UI REFS
+    const els = {
+      mode: document.getElementById('modeSel'),
+      intSel: document.getElementById('intervalSel'),
+      catSel: document.getElementById('catSel'),
+      smartDesc: document.getElementById('smartDesc'),
+      manSet: document.getElementById('manualSettings'),
+      start: document.getElementById('btnStart'),
+      stop: document.getElementById('btnStop'),
+      pts: document.getElementById('hudPts'),
+      spd: document.getElementById('hudSpd'),
+      head: document.getElementById('hudHead'),
+      trip: document.getElementById('hudTrip'),
+      status: document.getElementById('status'),
+      geo: document.getElementById('geoResult'),
+      wpStatus: document.getElementById('wpStatus'),
+      bgIndicator: document.getElementById('bgIndicator'),
+      wakeLockStatus: document.getElementById('wakeLockStatus')
+    };
+
+    // ====================================
+    // WAKE LOCK
+    // ====================================
+    
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator)) {
+        els.wakeLockStatus.textContent = 'Wake Lock: Not Supported';
+        return false;
+      }
+
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        els.wakeLockStatus.textContent = '🔋 Wake Lock: ACTIVE';
+        els.wakeLockStatus.style.color = '#22c55e';
+        els.bgIndicator.classList.add('active');
+        
+        wakeLock.addEventListener('release', () => {
+          els.wakeLockStatus.textContent = 'Wake Lock: Released';
+          els.wakeLockStatus.style.color = '#fbbf24';
+          if (tracking) setTimeout(requestWakeLock, 1000);
+        });
+
+        return true;
+      } catch (err) {
+        console.error('Wake Lock error:', err);
+        els.wakeLockStatus.textContent = 'Wake Lock: Failed';
+        return false;
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+        els.wakeLockStatus.textContent = 'Wake Lock: Not Active';
+        els.wakeLockStatus.style.color = '';
+        els.bgIndicator.classList.remove('active');
+      }
+    }
+
+    // ====================================
+    // BACKGROUND TRACKING VIA SERVICE WORKER
+    // ====================================
+
+    function sendToServiceWorker(action, data = {}) {
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          action,
+          ...data
+        });
+      }
+    }
+
+    function updateUIFromServiceWorker(data) {
+      if (data.speed !== undefined) {
+        els.spd.textContent = data.speed.toFixed(0) + " mph";
+      }
+      if (data.heading !== undefined) {
+        els.head.textContent = data.heading.toFixed(0) + "°";
+      }
+      if (data.pointCount !== undefined) {
+        els.pts.textContent = data.pointCount;
+        pointCount = data.pointCount;
+      }
+    }
+
+    // ====================================
+    // INIT
+    // ====================================
+    
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('inpTime').value = now.toISOString().slice(0,16);
+
+    els.mode.addEventListener('change', () => {
+      if(els.mode.value === 'smart'){
+        els.manSet.style.display = 'none';
+        els.smartDesc.style.display = 'block';
+      } else {
+        els.manSet.style.display = 'grid';
+        els.smartDesc.style.display = 'none';
+        els.intSel.innerHTML = els.mode.value === 'time' 
+          ? `<option value="30000">30 sec</option><option value="60000">1 min</option><option value="300000">5 min</option>`
+          : `<option value="0.2">0.2 mi</option><option value="0.5">0.5 mi</option><option value="1">1.0 mi</option>`;
+      }
+    });
+
+    // ====================================
+    // START/STOP TRACKING
+    // ====================================
+
+    els.start.addEventListener('click', async () => {
+      tracking = true;
+      els.start.disabled = true;
+      els.stop.disabled = false;
+      els.status.textContent = "STARTING...";
+      
+      await requestWakeLock();
+      
+      const meta = { 
+        startTs: Date.now(), 
+        status: "active", 
+        mode: els.mode.value,
+        interval: els.mode.value !== 'smart' ? els.intSel.value : null
+      };
+      const ref = tripsRef.push({ meta });
+      activeTripId = ref.key;
+      pointCount = 0;
+      els.trip.textContent = activeTripId.slice(-4);
+      els.status.textContent = "TRACKING";
+      els.status.style.color = "#22c55e";
+      
+      // Tell Service Worker to start tracking
+      sendToServiceWorker('START_TRACKING', {
+        tripId: activeTripId,
+        mode: els.mode.value,
+        interval: meta.interval,
+        config: {
+          cornerAngle: CORNER_ANGLE_THRESHOLD,
+          straightDist: STRAIGHT_DIST_THRESHOLD,
+          minMove: MIN_MOVE_DIST
+        }
+      });
+      
+      watchId = navigator.geolocation.watchPosition(
+        onPos, 
+        onErr, 
+        { 
+          enableHighAccuracy: true, 
+          maximumAge: 0,
+          timeout: 10000
+        }
+      );
+    });
+
+    els.stop.addEventListener('click', () => {
+      tracking = false;
+      navigator.geolocation.clearWatch(watchId);
+      releaseWakeLock();
+      
+      // Tell Service Worker to stop
+      sendToServiceWorker('STOP_TRACKING');
+      
+      els.start.disabled = false;
+      els.stop.disabled = true;
+      els.status.textContent = "STOPPED";
+      els.status.style.color = "#94a3b8";
+      
+      if(activeTripId) {
+        db.ref(`sessions/${sessionId}/trips/${activeTripId}/meta`).update({ 
+          endTs: Date.now(), 
+          status: "ended" 
+        });
+        activeTripId = null;
+      }
+    });
+
+    // ====================================
+    // GPS POSITION HANDLING
+    // ====================================
+
+    function onPos(pos) {
+      if(!tracking) return;
+      
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const spdMps = pos.coords.speed || 0;
+      const head = pos.coords.heading || 0;
+      const spdMph = spdMps * 2.237;
+
+      els.spd.textContent = spdMph.toFixed(0) + " mph";
+      els.head.textContent = head.toFixed(0) + "°";
+      stateRef.update({ lastTs: Date.now(), fuzzy: [lat, lng], speed: spdMph });
+
+      // Send position to Service Worker for background processing
+      sendToServiceWorker('GPS_POSITION', {
+        lat, lng, head, speed: spdMph, ts: Date.now()
+      });
+
+      const currentFix = { lat, lng, head, ts: Date.now() };
+
+      if(!lastSavedFix) { savePoint(currentFix, "gps"); return; }
+
+      const distMiles = getDistMiles(lastSavedFix, currentFix);
+      let shouldSave = false;
+
+      if(els.mode.value === 'smart') {
+        const headDelta = Math.abs(getAngleDiff(lastSavedFix.head, currentFix.head));
+        if(distMiles > 0.02 && headDelta > CORNER_ANGLE_THRESHOLD) shouldSave = true;
+        else if(distMiles > STRAIGHT_DIST_THRESHOLD) shouldSave = true;
+      } else if (els.mode.value === 'dist') {
+        if(distMiles >= parseFloat(els.intSel.value)) shouldSave = true;
+      } else if (els.mode.value === 'time') {
+        if(Date.now() - lastSavedFix.ts >= parseInt(els.intSel.value)) shouldSave = true;
+      }
+
+      if(shouldSave && distMiles < MIN_MOVE_DIST && els.mode.value === 'smart') shouldSave = false;
+      if(shouldSave) savePoint(currentFix, "gps");
+      lastFix = currentFix;
+    }
+
+    function onErr(err) { 
+      console.error(err); 
+      els.status.textContent = "GPS ERROR"; 
+      els.status.style.color = "#ef4444"; 
+    }
+
+    // ====================================
+    // SAVE POINT
+    // ====================================
+
+    async function savePoint(fix, type, note = null, standalone = false) {
+      let tid = activeTripId;
+      if(standalone) tid = "manual_" + Date.now();
+      else if (!tid) {
+        const ref = tripsRef.push({ meta: { startTs: Date.now(), status: "auto-start" } });
+        activeTripId = ref.key;
+        tid = activeTripId;
+      }
+
+      const color = (standalone) ? els.catSel.value : null;
+
+      const data = {
+        lat: fix.lat, lng: fix.lng,
+        ts: fix.ts || Date.now(),
+        source: type,
+        color: color, 
+        tripId: tid,
+        note: note
+      };
+
+      await globalRef.push(data);
+      if(!standalone) {
+        await db.ref(`sessions/${sessionId}/trips/${tid}/points`).push(data);
+        lastSavedFix = fix;
+        pointCount++;
+        els.pts.textContent = pointCount;
+      }
+    }
+
+    // ====================================
+    // UTILITY FUNCTIONS
+    // ====================================
+
+    function getDistMiles(p1, p2) {
+      if(!p1 || !p2) return 0;
+      const R = 3958.8; 
+      const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+      const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+      return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * R;
+    }
+
+    function getAngleDiff(a1, a2) {
+      let diff = (a2 - a1 + 180) % 360 - 180;
+      return diff < -180 ? diff + 360 : diff;
+    }
+
+    // ====================================
+    // WAYPOINT FUNCTIONS
+    // ====================================
+
+    window.setTab = function(id) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      const btn = document.getElementById('tabBtn_' + id);
+      if(btn) btn.classList.add('active');
+      ['search','coord','here'].forEach(x => {
+        document.getElementById('tab-' + x).style.display = (x === id) ? 'block' : 'none';
+      });
+    }
+
+    window.doGeocode = function() {
+      const q = document.getElementById('inpSearch').value;
+      if(!q) return;
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ 'address': q }, (res, status) => {
+        if(status === 'OK' && res[0]){
+          const loc = res[0].geometry.location;
+          document.getElementById('inpLat').value = loc.lat().toFixed(6);
+          document.getElementById('inpLng').value = loc.lng().toFixed(6);
+          let name = res[0].formatted_address.replace(", USA", "");
+          lastFoundAddr = name;
+          document.getElementById('geoResult').innerHTML = "✔ " + name;
+          setTab('coord'); 
+        } else {
+          document.getElementById('geoResult').textContent = "Not found.";
+        }
+      });
+    }
+
+    window.saveWaypoint = async function() {
+      let mode = 'search';
+      if(document.getElementById('tabBtn_here').classList.contains('active')) mode = 'here';
+      if(document.getElementById('tabBtn_coord').classList.contains('active')) mode = 'coord';
+
+      let lat, lng;
+      if(mode === 'here') {
+        if(!lastFix) { alert("No GPS Fix yet."); return; }
+        lat = lastFix.lat; lng = lastFix.lng;
+      } else {
+        lat = parseFloat(document.getElementById('inpLat').value);
+        lng = parseFloat(document.getElementById('inpLng').value);
+      }
+      if(isNaN(lat)) { alert("Invalid Coords"); return; }
+
+      let note = document.getElementById('inpNote').value.trim();
+      if(!note && lastFoundAddr && mode !== 'here') note = lastFoundAddr;
+      const timeStr = document.getElementById('inpTime').value;
+      const ts = timeStr ? new Date(timeStr).getTime() : Date.now();
+
+      els.wpStatus.textContent = "SAVING...";
+      els.wpStatus.style.color = "#fbbf24"; 
+
+      try {
+        await savePoint({ lat, lng, ts }, "manual", note, true);
+        
+        els.wpStatus.textContent = "SAVED!";
+        els.wpStatus.style.color = "#22c55e"; 
+
+        setTimeout(()=> {
+          els.wpStatus.textContent="READY";
+          els.wpStatus.style.color = ""; 
+        }, 2000);
+        
+        document.getElementById('inpSearch').value = "";
+        document.getElementById('inpNote').value = "";
+        document.getElementById('geoResult').textContent = "";
+        lastFoundAddr = "";
+      } catch(e) {
+        alert("Save Error: " + e.message);
+        els.wpStatus.textContent = "ERROR";
+      }
+    }
+
+    window.undoLast = async function() {
+      if(!confirm("Delete last manual point?")) return;
+      els.wpStatus.textContent = "SCANNING...";
+      
+      const snap = await globalRef.orderByKey().limitToLast(500).get();
+      
+      if(snap.exists()){
+        const data = snap.val();
+        const keys = Object.keys(data).sort().reverse(); 
+        
+        for(const k of keys){
+          if(data[k].source === "manual"){
+            await globalRef.child(k).remove();
+            alert("Deleted last manual point.");
+            els.wpStatus.textContent = "READY";
+            return;
+          }
+        }
+      }
+      alert("No manual point found in last 500 records.");
+      els.wpStatus.textContent = "READY";
+    }
+  </script>
+</body>
+</html>

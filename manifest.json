@@ -1,0 +1,33 @@
+{
+  "name": "Tony's GPS Tracker",
+  "short_name": "Tony GPS",
+  "description": "Smart GPS tracking for over-the-road truck drivers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["navigation", "utilities", "travel"],
+  "screenshots": [
+    {
+      "src": "/screenshot.png",
+      "sizes": "540x720",
+      "type": "image/png"
+    }
+  ]
+}
